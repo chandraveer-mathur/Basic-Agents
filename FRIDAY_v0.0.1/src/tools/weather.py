@@ -1,8 +1,6 @@
 import requests
-
-from langchain.agents import create_agent
 from langchain.tools import tool
-from langchain_ollama import ChatOllama
+
 
 @tool
 def get_weather(city: str) -> str:
@@ -97,11 +95,14 @@ def get_weather(city: str) -> str:
     except (KeyError, ValueError):
         return "The weather service returned unexpected data."
 
-# 4. Connect with LLM 
 
+from langchain.agents import create_agent
+from langchain_ollama import ChatOllama
+
+# 4. Connect with LLM 
 model = ChatOllama(
     model="qwen2.5:3b",
-    temperature=1
+    temperature=0
 )
 
 # Create4 the agent and give it the weather tool
