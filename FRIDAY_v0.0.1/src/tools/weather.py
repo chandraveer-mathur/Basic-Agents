@@ -1,7 +1,6 @@
 import requests
 from langchain.tools import tool
 
-
 @tool
 def get_weather(city: str) -> str:
     """Get the current weather for a city. Use this for weather questions."""
@@ -94,47 +93,3 @@ def get_weather(city: str) -> str:
         return "The weather service is temporarily unavailable."
     except (KeyError, ValueError):
         return "The weather service returned unexpected data."
-
-
-from langchain.agents import create_agent
-from langchain_ollama import ChatOllama
-
-# 4. Connect with LLM 
-model = ChatOllama(
-    model="qwen2.5:3b",
-    temperature=0
-)
-
-# Create4 the agent and give it the weather tool
-agent = create_agent(
-    model=model,
-    tools=[get_weather],
-    system_prompt=(
-        "You are a helpful assistant. "
-        "Use get_weather whenever the user asks about current "
-        "weather or current weather conditions in a place. "
-        "If the location is missing, ask the user for it. "
-        "Answer using the tool's actual results. "
-        "Never invent weather measurements."
-    ),
-)
-
-# Chat with the agent
-while True:
-    user_input = input("\nUser: ")
-
-    if user_input.lower() in ["exist", "quit"]:
-        break
-
-    result = agent.invoke(
-        {
-            "messages":[
-                {
-                    "role": "user",
-                    "content": user_input
-                }
-            ]
-        }
-    )
-
-    print("\nAssistant: ", result["messages"][-1].content)

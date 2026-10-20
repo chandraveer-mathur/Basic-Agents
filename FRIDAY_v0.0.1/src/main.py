@@ -25,7 +25,6 @@ def main():
                 }
             )
 
-
             result = friday.invoke(
                 {
                     "messages": conversation
