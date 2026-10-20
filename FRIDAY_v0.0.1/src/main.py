@@ -1,4 +1,4 @@
-from agent import create_friday_agent
+from src.agent import create_friday_agent
 
 def main():
     friday = create_friday_agent()
