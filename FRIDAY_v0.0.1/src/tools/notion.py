@@ -1,6 +1,7 @@
 # FRIDAY_v0.0.1\src\tools\notion.py
 
 import requests
+import re 
 
 from src.config import (NOTION_TOKEN, NOTION_PARENT_PAGE_ID)
 
@@ -54,8 +55,22 @@ def extract_page_title(page):
 
 @tool
 def search_notion_pages(query: str) -> str:
-    """Search accessible Notion pages by title.
-    Use when the user wants to find a page in their Notion workspace.
+    """Find Notion pages by their title or related search terms.
+
+    Use this tool when the user wants to locate a page by its name,
+    find a page whose ID is unknown, or discover matching pages before
+    reading one.
+
+    Args:
+        query: The page title or distinctive words from the title.
+            For example, "MAIN THEORY" or "LangChain notes".
+
+    Returns:
+        Matching page titles, page IDs, and URLs.
+        If a page is found and the user wants its contents, pass the
+        selected page ID to get_notion_page_content.
+        If several pages match, ask the user to choose.
+        If no pages match, report that no matching pages were found.
     """
     query = query.strip()
     if not query:
@@ -92,9 +107,23 @@ def search_notion_pages(query: str) -> str:
 
 @tool
 def read_notion_page(page_id: str) -> str:
-    """Read the text blocks from a Notion page using its page ID.
-    Use after finding a page or when the user provides a page ID.
+    """Read the text content of a Notion page using its page ID.
+
+    Use this tool when the page ID is already known, supplied by the
+    user, or returned by search_notion_pages.
+
+    Do not use a page title as the page_id argument. If only the title
+    is known, search for the page first.
+
+    Args:
+        page_id: The Notion page UUID, with or without hyphens.
+
+    Returns:
+        The readable text from the page's direct child blocks.
+        The result may be incomplete if the page has more than the
+        supported number of blocks or contains nested content.
     """
+    # Keep your existing implementation below.
     page_id = page_id.strip()
     if not page_id:
         return "Please provide a Notion page ID."
@@ -131,7 +160,17 @@ def read_notion_page(page_id: str) -> str:
 @tool
 def create_notion_page(title: str, content: str) -> str:
     """Create a new Notion page with a title and plain-text content.
-    Use when the user explicitly asks to save or create a page in Notion.
+
+    Use only when the user explicitly asks to create or save a page.
+    Do not use this tool to search for or update an existing page.
+
+    Args:
+        title: The title of the new page.
+        content: The text content to add to the page.
+
+    Returns:
+        A success message with the created page's title, URL, and ID,
+        or an error explaining why creation failed.
     """
 
     print(f"[DEBUG] Title received: {title!r}")
@@ -190,8 +229,146 @@ def create_notion_page(title: str, content: str) -> str:
     )
 
 
+
+
+@tool
+def get_notion_page_content(
+    page_title: str = "",
+    page_id: str = "",
+) -> str:
+    """Retrieve the text content of a Notion page by title or page ID.
+
+    Use when the user wants to read, summarize, explain, or analyze
+    the contents of a Notion page.
+
+    Provide either page_title or page_id:
+    - If page_id is supplied, retrieve that page directly.
+    - If page_title is supplied, search Notion and resolve the title
+      to a page ID before retrieving its content.
+
+    Do not ask the user for a page ID when a title can be searched.
+
+    If multiple pages have the same exact title, return their titles
+    and IDs so the user can select the intended page.
+    If no exact title match exists, return the available search
+    candidates rather than silently selecting an unrelated page.
+
+    Args:
+        page_title: The title of the page to retrieve.
+        page_id: The Notion page UUID, with or without hyphens.
+
+    Returns:
+        The page's readable direct-child text, or a message explaining
+        why the page could not be resolved or read.
+    """
+    page_title = page_title.strip()
+    page_id = page_id.strip()
+
+    if bool(page_title) == bool(page_id):
+        return "Provide exactly one of page_title or page_id."
+
+    if page_title:
+        data = notion_request(
+            "POST",
+            "/search",
+            json={
+                "query": page_title,
+                "filter": {
+                    "property": "object",
+                    "value": "page",
+                },
+                "page_size": 100,
+            },
+        )
+
+        pages = data.get("results", [])
+
+        exact_matches = [
+            page for page in pages
+            if extract_page_title(page).casefold()
+            == page_title.casefold()
+        ]
+
+        if len(exact_matches) > 1:
+            candidates = [
+                f"Title: {extract_page_title(p)}\nID: {p['id']}"
+                for p in exact_matches
+            ]
+            return (
+                "Multiple pages have this exact title. "
+                "Ask the user to choose:\n\n"
+                + "\n\n".join(candidates)
+            )
+
+        if len(exact_matches) == 1:
+            page_id = exact_matches[0]["id"]
+        else:
+            if not pages:
+                return f"No Notion pages found for '{page_title}'."
+
+            candidates = [
+                f"Title: {extract_page_title(p)}\n"
+                f"ID: {p['id']}\n"
+                f"URL: {p.get('url', '')}"
+                for p in pages
+            ]
+            return (
+                f"No exact title match for '{page_title}'. "
+                "Review these search candidates and select the "
+                "correct page:\n\n"
+                + "\n\n".join(candidates)
+            )
+
+    # Accept standard UUIDs and 32-character UUIDs without hyphens.
+    normalized_id = page_id.replace("-", "")
+
+    if not re.fullmatch(r"[0-9a-fA-F]{32}", normalized_id):
+        return "The supplied page ID is not a valid UUID."
+
+    page_id = (
+        f"{normalized_id[:8]}-{normalized_id[8:12]}-"
+        f"{normalized_id[12:16]}-{normalized_id[16:20]}-"
+        f"{normalized_id[20:]}"
+    )
+
+    data = notion_request(
+        "GET",
+        f"/blocks/{page_id}/children",
+        params={"page_size": 100},
+    )
+
+    lines = []
+
+    for block in data.get("results", []):
+        block_type = block.get("type")
+        content = block.get(block_type, {})
+        rich_text = content.get("rich_text", [])
+
+        text = "".join(
+            item.get("plain_text", "")
+            for item in rich_text
+        )
+
+        if text:
+            lines.append(text)
+
+    if data.get("has_more"):
+        lines.append(
+            "[More content exists; pagination is not yet implemented.]"
+        )
+
+    if not lines:
+        return (
+            "The page was retrieved, but no readable direct-child "
+            "text blocks were found."
+        )
+
+    return "\n".join(lines)
+
+
 NOTION_TOOLS = [
     search_notion_pages,
     read_notion_page,
     create_notion_page,
+    get_notion_page_content,
 ]

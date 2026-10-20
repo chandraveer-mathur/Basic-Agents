@@ -1,4 +1,7 @@
+# FRIDAY_v0.0.1\src\main.py
+
 from src.agent import create_friday_agent
+from src.tool_logger import ToolLooger
 
 def main():
     friday = create_friday_agent()
@@ -28,6 +31,9 @@ def main():
             result = friday.invoke(
                 {
                     "messages": conversation
+                },
+                config={
+                    "callbacks": [ToolLooger()]
                 }
             )
 
