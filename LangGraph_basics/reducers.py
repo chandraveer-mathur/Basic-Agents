@@ -18,17 +18,24 @@ def search_source_two(state: ResearchState) -> dict:
         "search_results": ["Result from search two"]
     }
 
+def search_source_three(state: ResearchState) -> dict:
+    return {
+        "search_results": ["Result from seach three"]
+    }
+
 # Build graph
 builder = StateGraph(ResearchState)
 
 # Add nodes
-builder.add_node("search_source_one", search_source_one)
-builder.add_node("search_source_two", search_source_two)
+builder.add_node("node1", search_source_one)
+builder.add_node("node2", search_source_two)
+builder.add_node("node3", search_source_three)
 
 # Add edges
-builder.add_edge(START, "search_source_one")
-builder.add_edge("search_source_one", "search_source_two")
-builder.add_edge("search_source_two", END)
+builder.add_edge(START, "node1")
+builder.add_edge("node1", "node2")
+builder.add_edge("node2", "node3")
+builder.add_edge("node3", END)
 
 workflow = builder.compile()
 
